@@ -1,34 +1,37 @@
 /* eslint-disable no-console */
 import React, { Component } from 'react';
 import {
-	Platform,
 	ScrollView,
 	Text,
 	TouchableOpacity,
-	View
+	View,
+	Platform,
 } from 'react-native';
 import { AudioRecorder, AudioUtils } from "react-native-audio";
 import Icon from 'react-native-vector-icons/Ionicons';
 import moment from 'moment';
-import RNFS from 'react-native-fs';
+import RNFetchBlob from 'react-native-fetch-blob';
 import Sound from "react-native-sound";
 
 import styles from './styles/FableAudioRecorder';
 
 const fileExtension = 'aac';
 const initialRecord = 'test.aac';
+const DOCUMENT_DIR = `${AudioUtils.DocumentDirectoryPath}/innerview`;
+const RNFS = RNFetchBlob.fs;
 
 class FableAudioRecorder extends Component {
 	constructor(props) {
 		super(props);
 
 		this.state = {
-			audioPath: `${AudioUtils.DocumentDirectoryPath}/${initialRecord}`,
+			audioPath: `${DOCUMENT_DIR}/${initialRecord}`,
 			currentTime: 0.0,
 			finished: false,
 			recording: false,
 			recordsList: [],
-			stoppedRecording: false
+			stoppedRecording: false,
+			data: null,
 		};
 
 		this._pause = this._pause.bind(this);
@@ -37,17 +40,15 @@ class FableAudioRecorder extends Component {
 	}
 
 	componentDidMount() {
-		this._getAllRecords();
-		this._prepareRecordingPath(this.state.audioPath);
-
-		AudioRecorder.onFinished = data => {
-			if (Platform.OS === "ios") {
-				this._finishRecording(
-					data.status === "OK",
-					data.audioFileURL
-				);
+		RNFS.isDir(DOCUMENT_DIR).then(isDir => {
+			if (isDir) {
+				this._prepareRecorder();
+			} else {
+				RNFetchBlob.fs.mkdir(DOCUMENT_DIR).then(res => {
+					this._prepareRecorder();
+				});
 			}
-		};
+		});
 	}
 
 	_prepareRecordingPath(audioPath) {
@@ -60,12 +61,31 @@ class FableAudioRecorder extends Component {
 		});
 	}
 
+	_prepareRecorder(audioPath) {
+		this._getAllRecords();
+		this._prepareRecordingPath(this.state.audioPath);
+
+		AudioRecorder.onFinished = data => {
+			if (Platform.OS === 'ios') {
+				this._finishRecording(
+					data.status === "OK",
+					data.audioFileURL
+				);
+			}
+		};
+
+		AudioRecorder.onProgress = data => {
+			this.setState({ currentTime: Math.floor(data.currentTime) });
+		};
+	}
+
 	async _getAllRecords() {
 		const files = [];
-		const result = await RNFS.readDir(RNFS.DocumentDirectoryPath);
+		// RNFetchBlob.fs.ls(DOCUMENT_DIR)
+		const result = await RNFS.ls(DOCUMENT_DIR);
 		result.filter(item => {
-			if (item.name === '.DS_Store' || item.name === initialRecord) return false;
-			files.push(item.name);
+			if (item === '.DS_Store' || item === initialRecord) return false;
+			files.push(item);
 
 			return true;
 		});
@@ -101,28 +121,34 @@ class FableAudioRecorder extends Component {
 		this.setState({ stoppedRecording: true, recording: false });
 
 		setTimeout(() => {
-			const dateTime = moment().format('MM-DD-YYYY hh:mm:ss');
+			const dateTime = moment().format('MM-DD-YYYY[T]hh:mm:ss');
 			if (this.state.finished) {
-				RNFS.copyFile(
-					`${RNFS.DocumentDirectoryPath}/${initialRecord}`,
-					`${RNFS.DocumentDirectoryPath}/${dateTime}.${fileExtension}`
+				// RNFetchBlob.fs.cp
+				console.log(`${DOCUMENT_DIR}/${initialRecord}`);
+				RNFS.cp(
+					`${DOCUMENT_DIR}/${initialRecord}`,
+					`${DOCUMENT_DIR}/${dateTime}.${fileExtension}`
 				);
 				this.setState({ finished: false });
 			}
 			this._getAllRecords();
-		}, 1000);
+		}, 200);
 
 		try {
 			await AudioRecorder.stopRecording();
+			if (Platform.OS === 'android') {
+				this._finishRecording(true, this.state.audioPath);
+			}
 		} catch (error) {
 			console.error(error);
 		}
 	}
 
 	async _play(item) {
+		console.log(item);
 		if (this.state.recording) await this._stop();
 
-		const sound = new Sound(`${RNFS.DocumentDirectoryPath}/${item}`, '', error => {
+		const sound = new Sound(`${DOCUMENT_DIR}/${item}`, '', error => {
 			if (error) {
 				console.log("Failed to load the sound", error);
 			}
@@ -140,7 +166,8 @@ class FableAudioRecorder extends Component {
 	}
 
 	async _delete(item) {
-		await RNFS.unlink(`${RNFS.DocumentDirectoryPath}/${item}`);
+		// RNFetchBlob.fs(`${DOCUMENT_DIR}/${item}`)
+		await RNFS.unlink(`${DOCUMENT_DIR}/${item}`);
 		this._getAllRecords();
 	}
 
@@ -152,6 +179,7 @@ class FableAudioRecorder extends Component {
 	render() {
 		return (
 			<View style={styles.container}>
+				<Text>{this.state.currentTime}</Text>
 				<View style={styles.controls}>
 					<TouchableOpacity onPress={this.state.recording ? this._pause : this._record}>
 						<View>

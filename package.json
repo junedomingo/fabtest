@@ -22,6 +22,7 @@
     "react": "~15.4.1",
     "react-native": "0.42.0",
     "react-native-audio": "^3.2.1",
+    "react-native-fetch-blob": "^0.10.4",
     "react-native-fs": "^2.1.0-rc.1",
     "react-native-sound": "^0.9.1",
     "react-native-vector-icons": "^4.0.0"
